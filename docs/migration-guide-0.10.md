@@ -8,7 +8,7 @@ There's some more detail about this change in [#848](https://github.com/function
 
 #### Type Classes
 
-As a result of this migration, the `fs2.util` package is significantly smaller. The type classes that existed in `fs2.util` have all been replaced by equivalent type classes in cats and cats-effect.
+As a result of this migration, the `fs2.util` package has been removed. The type classes that existed in `fs2.util` have all been replaced by equivalent type classes in cats and cats-effect.
 
 |0.9|0.10|
 |---|---|
@@ -44,7 +44,7 @@ As a result `fs2.Task` has been removed. Porting from `Task` to `IO` is relative
 |`t.unsafeRunFor(limit)`|`io.unsafeRunTimed(limit)`| |
 |`t.unsafeRunAsyncFuture`|`io.unsafeToFuture`| |
 |`Task.fromFuture(Future { ... })`|`IO.fromFuture(Eval.always(Future { ... }))`| Laziness is explicit via use of `cats.Eval` |
-|`Task.async(reg => ...)`|`IO.async(reg => ...)`|Note that `IO.async` does *NOT* thread-shift, unlike `Task.async`. Use `IO.shift` as appropriate (`IO.async` is semantically equivalent to `Task.unforedAsync`)|
+|`Task.async(reg => ...)`|`IO.async(reg => ...)`|Note that `IO.async` does *NOT* thread-shift, unlike `Task.async`. Use `IO.shift` as appropriate (`IO.async` is semantically equivalent to `Task.unforkedAsync`)|
 
 ### Performance
 
@@ -124,7 +124,13 @@ Scheduler[IO](corePoolSize = 1).flatMap { scheduler =>
 }
 ```
 
+`Scheduler` has some new low level operations like `fixedDelay` and `fixedRate` which should replace most uses of `awakeEvery`. `fixedRate` is equivalent to `awakeEvery` but returns `Unit` values in the stream instead of the elapsed duration.
+
+`Scheduler` also has some convenience operations like `scheduler.delay(s, 10.seconds)`.
+
 The `debounce` pipe has moved to the `Scheduler` class also. As a result, FS2 no longer requires passing schedulers implicitly.
+
+The `fs2.time.{ duration, every }` methods have been moved to `Stream` as they have no dependency on scheduling.
 
 #### Merging
 

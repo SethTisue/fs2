@@ -1,18 +1,21 @@
 package fs2.async
 
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+
 
 import cats.Eq
 import cats.implicits.{ catsSyntaxEither => _, _ }
 import cats.effect.{ Effect, IO }
 
+import fs2.Scheduler
 import fs2.internal.{Actor,LinkedMap}
 import java.util.concurrent.atomic.{AtomicBoolean,AtomicReference}
 
 import Ref._
 
 /** An asynchronous, concurrent mutable reference. */
-final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
+final class Ref[F[_],A] private[fs2] (implicit F: Effect[F], ec: ExecutionContext) { self =>
 
   private var result: Either[Throwable,A] = null
   // any waiting calls to `access` before first `set`
@@ -79,7 +82,7 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
   /** Obtains the value of the `Ref`, or wait until it has been `set`. */
   def get: F[A] = F.flatMap(F.delay(new MsgId)) { mid => F.map(getStamped(mid))(_._1) }
 
-  /** Like `get`, but returns an `F[Unit]` that can be used cancel the subscription. */
+  /** Like [[get]] but returns an `F[Unit]` that can be used cancel the subscription. */
   def cancellableGet: F[(F[A], F[Unit])] = F.delay {
     val id = new MsgId
     val get = F.map(getStamped(id))(_._1)
@@ -88,6 +91,17 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
     }
     (get, cancel)
   }
+
+  /**
+   * Like [[get]] but if the ref has not been initialized when the timeout is reached, a `None`
+   * is returned.
+   */
+  def timedGet(timeout: FiniteDuration, scheduler: Scheduler): F[Option[A]] =
+    cancellableGet.flatMap { case (g, cancelGet) =>
+      scheduler.effect.delayCancellable(F.unit, timeout).flatMap { case (timer, cancelTimer) =>
+        fs2.async.race(g, timer).flatMap(_.fold(a => cancelTimer.as(Some(a)), _ => cancelGet.as(None)))
+      }
+    }
 
   /**
    * Tries modifying the reference once, returning `None` if another
@@ -131,27 +145,27 @@ final class Ref[F[_],A](implicit F: Effect[F], ec: ExecutionContext) { self =>
    * *Asynchronously* sets a reference. After the returned `F[Unit]` is bound,
    * the task is running in the background. Multiple tasks may be added to a
    * `Ref[A]`.
-   *
-   * Satisfies: `r.setAsync(fa) flatMap { _ => r.get } == fa`
    */
   def setAsync(fa: F[A]): F[Unit] =
-    F.liftIO(F.runAsync(F.shift(ec) >> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
+    F.liftIO(F.runAsync(F.shift(ec) *> fa) { r => IO(actor ! Msg.Set(r, () => ())) })
 
   /**
    * *Asynchronously* sets a reference to a pure value.
-   *
-   * Satisfies: `r.setAsyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
    */
-  def setAsyncPure(a: A): F[Unit] = setAsync(F.pure(a))
+  def setAsyncPure(a: A): F[Unit] = F.delay { actor ! Msg.Set(Right(a), () => ()) }
 
   /**
    * *Synchronously* sets a reference. The returned value completes evaluating after the reference has been successfully set.
+   *
+   * Satisfies: `r.setSync(fa) flatMap { _ => r.get } == fa`
    */
   def setSync(fa: F[A]): F[Unit] =
     F.flatMap(F.attempt(fa))(r => F.async(cb => actor ! Msg.Set(r, () => cb(Right(())))))
 
   /**
    * *Synchronously* sets a reference to a pure value.
+   *
+   * Satisfies: `r.setSyncPure(a) flatMap { _ => r.get(a) } == pure(a)`
    */
   def setSyncPure(a: A): F[Unit] = setSync(F.pure(a))
 

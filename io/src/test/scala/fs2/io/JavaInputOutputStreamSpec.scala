@@ -32,7 +32,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
         stream.through(toInputStream).evalMap { is =>
           // consume in same thread pool. Production application should never do this,
           // instead they have to fork this to dedicated thread pool
-          val buff = Array.ofDim[Byte](20)
+          val buff = new Array[Byte](20)
           @annotation.tailrec
           def go(acc: Vector[Byte]): IO[Vector[Byte]] = {
             is.read(buff) match {
@@ -45,10 +45,10 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
       example shouldBe fromInputStream
     }
-    
+
     "upstream.is.closed" in  {
       var closed: Boolean = false
-      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))
+      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO { closed = true })
 
       s.through(toInputStream).run.unsafeRunSync()
 
@@ -57,7 +57,7 @@ class JavaInputOutputStreamSpec extends Fs2Spec {
 
     "upstream.is.force-closed" in  {
       var closed: Boolean = false
-      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO(closed = true))
+      val s: Stream[IO, Byte] = Stream(1.toByte).onFinalize(IO { closed = true })
 
       val result =
         s.through(toInputStream).evalMap { is =>

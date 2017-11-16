@@ -37,7 +37,7 @@ lazy val commonSettings = Seq(
   scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value,
   libraryDependencies ++= Seq(
     compilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4"),
-    "org.scalatest" %%% "scalatest" % "3.0.3" % "test",
+    "org.scalatest" %%% "scalatest" % "3.0.4" % "test",
     "org.scalacheck" %%% "scalacheck" % "1.13.5" % "test"
   ),
   scmInfo := Some(ScmInfo(url("https://github.com/functional-streams-for-scala/fs2"), "git@github.com:functional-streams-for-scala/fs2.git")),
@@ -175,7 +175,7 @@ lazy val core = crossProject.in(file("core")).
   settings(commonSettings: _*).
   settings(
     name := "fs2-core",
-    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.4"
+    libraryDependencies += "org.typelevel" %%% "cats-effect" % "0.5"
   ).
   jsSettings(commonJsSettings: _*)
 
@@ -189,7 +189,7 @@ lazy val coreJVM = core.jvm.enablePlugins(SbtOsgi).
     libraryDependencies ++= {
       CrossVersion.partialVersion(scalaVersion.value) match {
         case Some((2, minor)) if minor >= 13 =>
-          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2")
+          Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "0.1.2" % "test")
         case _ =>
           Seq()
       }

@@ -22,14 +22,16 @@ import scala.reflect.ClassTag
 abstract class Chunk[+O] extends Segment[O,Unit] { self =>
 
   private[fs2]
-  def stage0 = (_, _, emit, emits, done) => Eval.now {
+  def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: O => Unit, emits: Chunk[O] => Unit, done: Unit => Unit) = {
     var emitted = false
-    Segment.step(if (emitted) Segment.empty else this) {
-      if (!emitted) {
-        emitted = true
-        emits(this)
+    Eval.now {
+      Segment.step(if (emitted) Segment.empty else this) {
+        if (!emitted) {
+          emitted = true
+          emits(this)
+        }
+        done(())
       }
-      done(())
     }
   }
 
@@ -63,7 +65,7 @@ abstract class Chunk[+O] extends Segment[O,Unit] { self =>
   override def toArray[O2 >: O: ClassTag]: Array[O2] = {
     val arr = new Array[O2](size)
     var i = 0
-    this.map { b => arr(i) = b; i += 1 }.run
+    this.map { b => arr(i) = b; i += 1 }.drain.run
     arr
   }
 
@@ -192,7 +194,8 @@ object Chunk {
   private val empty_ : Chunk[Nothing] = new Chunk[Nothing] {
     def size = 0
     def apply(i: Int) = sys.error(s"Chunk.empty.apply($i)")
-    override def stage0 = (_,_,_,_,done) => Eval.now(Segment.step(empty_)(done(())))
+    override def stage0(depth: Segment.Depth, defer: Segment.Defer, emit: Nothing => Unit, emits: Chunk[Nothing] => Unit, done: Unit => Unit) =
+      Eval.now(Segment.step(empty_)(done(())))
     override def unconsChunk: Either[Unit, (Chunk[Nothing],Segment[Nothing,Unit])] = Left(())
     override def foreachChunk(f: Chunk[Nothing] => Unit): Unit = ()
     override def toVector: Vector[Nothing] = Vector.empty
